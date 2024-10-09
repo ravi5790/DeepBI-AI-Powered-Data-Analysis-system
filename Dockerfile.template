@@ -1,0 +1,63 @@
+FROM python:3.8.18-slim
+##  out port
+EXPOSE 8338 8339 8340
+# Controls whether to install extra dependencies needed for all data sources.
+ARG skip_ds_deps=true
+# Controls whether to install dev dependencies. If need, set skip_dev_deps eq ''
+ARG skip_dev_deps=yes
+#RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+#RUN echo "deb http://mirrors.aliyun.com/debian/ buster main" > /etc/apt/sources.list
+## Create user
+# RUN useradd --create-home deepbi
+## Ubuntu use aliyun source
+RUN apt-get update
+## Ubuntu packages
+RUN apt-get clean
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+  curl \
+  gnupg \
+  build-essential \
+  pwgen \
+  libffi-dev \
+  sudo \
+  git-core \
+  # Postgres client
+  libpq-dev \
+  # ODBC support:
+  g++ unixodbc-dev \
+  # for SAML
+  xmlsec1 \
+  # Additional packages required for data sources:
+  libssl-dev \
+  default-libmysqlclient-dev \
+  freetds-dev \
+  libsasl2-dev \
+  unzip \
+  libsasl2-modules-gssapi-mit && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+#
+# ali pip source
+#CN#RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+#CN#RUN pip install --upgrade pip
+# COPY --chown=deepbi . /app
+COPY ./vrequment.txt /app/vrequment.txt
+WORKDIR /app
+## Disable PIP Cache and Version Check
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_NO_CACHE_DIR=1
+## rollback pip version to avoid legacy resolver problem
+RUN pip install pip==20.2.4
+## We first copy only the requirements file, to avoid rebuilding on every file change.
+RUN if [ "x$skip_dev_deps" = "x" ] ; then pip install -r requirements_dev.txt ; fi
+#
+RUN pip install -r vrequment.txt
+#
+## fix python 3.8.18 error import .
+RUN sed -i 's/from importlib_resources import path/from importlib.resources import path/g' /usr/local/lib/python3.8/site-packages/saml2/sigver.py
+RUN sed -i 's/from importlib_resources import path/from importlib.resources import path/g' /usr/local/lib/python3.8/site-packages/saml2/xml/schema/__init__.py
+
+ENTRYPOINT ["/app/bin/docker-entrypoint"]
+CMD ["server"]
+
